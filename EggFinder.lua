@@ -3,239 +3,185 @@ local PLACE_ID = 85896571713843
 
 -- SERVICES
 local Players = game:GetService("Players")
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
 local TweenService = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
-local UserInputService = game:GetService("UserInputService")
 
--- STATE FLAGS
+-- FLAGS
 local autoHop = false
-local autoFly = false
 local autoHatch = false
-local targetEggName = "Bruh Egg"
+local targetRiftName = nil
+local foundRifts = {}
 
 -- UI SETUP
 local screenGui = Instance.new("ScreenGui", game.CoreGui)
-screenGui.Name = "BruhEggUI"
+screenGui.Name = "BruhGodUI"
 
 local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0, 260, 0, 320)
-frame.Position = UDim2.new(0, 10, 0.35, 0)
-frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.Size = UDim2.new(0, 240, 0, 160)
+frame.Position = UDim2.new(0, 10, 0.4, 0)
+frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 frame.BorderSizePixel = 0
+frame.BackgroundTransparency = 0.1
+frame.ClipsDescendants = true
+frame.Active = true
+frame.Draggable = true
 
--- Title
 local title = Instance.new("TextLabel", frame)
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundTransparency = 1
-title.Text = "Egg Finder & Auto Hatch"
+title.Text = "💀 Bruh God"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.SourceSansBold
+title.Font = Enum.Font.GothamBold
 title.TextSize = 20
 
--- Toggles helper
-local function createToggle(name, posY, callback)
-    local btn = Instance.new("TextButton", frame)
-    btn.Name = name
-    btn.Size = UDim2.new(0, 180, 0, 30)
-    btn.Position = UDim2.new(0, 10, 0, posY)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.Text = name .. ": OFF"
-    btn.TextSize = 18
-    btn.BorderSizePixel = 0
-    btn.AutoButtonColor = false
+local function createToggle(name, yPos, callback)
+    local btn = Instance.new("TextButton", frame)
+    btn.Size = UDim2.new(0, 220, 0, 28)
+    btn.Position = UDim2.new(0, 10, 0, yPos)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = name .. ": OFF"
+    btn.TextSize = 16
+    btn.BorderSizePixel = 0
 
-    local toggled = false
-    btn.MouseButton1Click:Connect(function()
-        toggled = not toggled
-        btn.Text = name .. ": " .. (toggled and "ON" or "OFF")
-        btn.BackgroundColor3 = toggled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(30, 30, 30)
-        callback(toggled)
-    end)
-    return btn
+    local toggled = false
+    btn.MouseButton1Click:Connect(function()
+        toggled = not toggled
+        btn.Text = name .. ": " .. (toggled and "ON" or "OFF")
+        btn.BackgroundColor3 = toggled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(35, 35, 35)
+        callback(toggled)
+    end)
+
+    return btn
 end
 
-local autoHopBtn = createToggle("Auto Hop", 40, function(state) autoHop = state end)
-local autoFlyBtn = createToggle("Auto Fly", 80, function(state) autoFly = state end)
-local autoHatchBtn = createToggle("Auto Hatch", 120, function(state) autoHatch = state end)
+local function createDropdown(yPos, items, onSelect)
+    local dropdown = Instance.new("TextButton", frame)
+    dropdown.Size = UDim2.new(0, 220, 0, 28)
+    dropdown.Position = UDim2.new(0, 10, 0, yPos)
+    dropdown.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    dropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    dropdown.Font = Enum.Font.Gotham
+    dropdown.TextSize = 15
+    dropdown.Text = "Select Egg Rift"
+    dropdown.BorderSizePixel = 0
 
--- Search Bar
-local searchBox = Instance.new("TextBox", frame)
-searchBox.Size = UDim2.new(0, 180, 0, 30)
-searchBox.Position = UDim2.new(0, 10, 0, 160)
-searchBox.PlaceholderText = "Search egg name..."
-searchBox.ClearTextOnFocus = false
-searchBox.Text = targetEggName
-searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-searchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-searchBox.Font = Enum.Font.SourceSans
-searchBox.TextSize = 18
-searchBox.BorderSizePixel = 0
+    local menu = Instance.new("Frame", dropdown)
+    menu.Position = UDim2.new(0, 0, 1, 0)
+    menu.Size = UDim2.new(1, 0, 0, 0)
+    menu.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    menu.Visible = false
+    menu.ClipsDescendants = true
 
--- Scroll frame for scanned eggs
-local scrollFrame = Instance.new("ScrollingFrame", frame)
-scrollFrame.Size = UDim2.new(0, 240, 0, 100)
-scrollFrame.Position = UDim2.new(0, 10, 0, 200)
-scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-scrollFrame.ScrollBarThickness = 6
-scrollFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-scrollFrame.BorderSizePixel = 0
-scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    local layout = Instance.new("UIListLayout", menu)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 2)
 
-local uiListLayout = Instance.new("UIListLayout", scrollFrame)
-uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-uiListLayout.Padding = UDim.new(0, 4)
+    dropdown.MouseButton1Click:Connect(function()
+        menu.Visible = not menu.Visible
+        menu.Size = UDim2.new(1, 0, 0, #items * 26)
+    end)
 
-local scannedEggs = {}
+    for _, name in ipairs(items) do
+        local opt = Instance.new("TextButton", menu)
+        opt.Size = UDim2.new(1, 0, 0, 24)
+        opt.Text = name
+        opt.Font = Enum.Font.Gotham
+        opt.TextColor3 = Color3.fromRGB(220, 220, 220)
+        opt.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        opt.TextSize = 14
+        opt.BorderSizePixel = 0
 
-local function clearScrollFrame()
-    for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
+        opt.MouseButton1Click:Connect(function()
+            targetRiftName = name
+            dropdown.Text = "Target: " .. name
+            menu.Visible = false
+            onSelect(name)
+        end)
+    end
+
+    return dropdown
 end
 
-local function addEggToList(eggName)
-    local label = Instance.new("TextButton", scrollFrame)
-    label.Size = UDim2.new(1, 0, 0, 24)
-    label.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    label.TextColor3 = Color3.fromRGB(220, 220, 220)
-    label.Font = Enum.Font.SourceSans
-    label.TextSize = 16
-    label.Text = eggName
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.BorderSizePixel = 0
-    label.AutoButtonColor = true
-
-    label.MouseButton1Click:Connect(function()
-        targetEggName = eggName
-        searchBox.Text = eggName
-        print("Selected egg:", eggName)
-    end)
-end
-
-local function scanEggs()
-    scannedEggs = {}
-    clearScrollFrame()
-
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if (obj:IsA("Model") or obj:IsA("Part")) and obj.Name:lower():find("egg") then
-            if not table.find(scannedEggs, obj.Name) then
-                table.insert(scannedEggs, obj.Name)
-            end
-        end
-    end
-
-    table.sort(scannedEggs)
-
-    for _, eggName in ipairs(scannedEggs) do
-        addEggToList(eggName)
-    end
-
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, #scannedEggs * 28)
-end
-
-searchBox.FocusLost:Connect(function(enterPressed)
-    if enterPressed and searchBox.Text ~= "" then
-        targetEggName = searchBox.Text
-        print("Target egg updated to:", targetEggName)
-    end
+local hopToggle = createToggle("Auto Hop", 35, function(state)
+    autoHop = state
 end)
 
--- Immediately scan eggs when script loads
-scanEggs()
+local hatchToggle = createToggle("Auto Hatch (R)", 70, function(state)
+    autoHatch = state
+end)
 
--- LOGIC FUNCTIONS
-local function findEggByName(name)
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if (obj:IsA("Model") or obj:IsA("Part")) and obj.Name:lower() == name:lower() then
-            return obj
-        end
-    end
-    return nil
+local dropdown -- defined later after scanning
+
+-- EGG RIFT SCANNER
+local function findEggRifts()
+    foundRifts = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        local lowerName = obj.Name:lower()
+        if (obj:IsA("Model") or obj:IsA("Part")) and lowerName:find("rift") and lowerName:find("egg") then
+            if not table.find(foundRifts, obj.Name) then
+                table.insert(foundRifts, obj.Name)
+            end
+        end
+    end
+    return foundRifts
 end
 
-local function tweenTo(targetPos)
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    local distance = (hrp.Position - targetPos).Magnitude
-    local time = math.clamp(distance / 40, 1, 5)
-
-    local tween = TweenService:Create(hrp, TweenInfo.new(time, Enum.EasingStyle.Sine), {
-        CFrame = CFrame.new(targetPos + Vector3.new(0, 5, 0))
-    })
-    tween:Play()
-    tween.Completed:Wait()
+-- TELEPORT
+local function tweenTo(pos)
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local root = char:WaitForChild("HumanoidRootPart")
+    local dist = (root.Position - pos).Magnitude
+    local tween = TweenService:Create(root, TweenInfo.new(math.clamp(dist / 40, 0.5, 5), Enum.EasingStyle.Sine), {
+        CFrame = CFrame.new(pos + Vector3.new(0, 5, 0))
+    })
+    tween:Play()
+    tween.Completed:Wait()
 end
 
-local function pressE()
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-end
-
-local function getServerList()
-    local servers = {}
-    local success, result = pcall(function()
-        local url = "https://games.roblox.com/v1/games/"..PLACE_ID.."/servers/Public?sortOrder=2&limit=100"
-        return HttpService:JSONDecode(game:HttpGet(url))
-    end)
-    if success and result and result.data then
-        for _, server in pairs(result.data) do
-            if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                table.insert(servers, server.id)
-            end
-        end
-    end
-    return servers
+-- PRESS "R"
+local function pressR()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.R, false, game)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.R, false, game)
 end
 
 -- MAIN LOOP
 task.spawn(function()
-    while true do
-        wait(1)
-        local egg = findEggByName(targetEggName)
+    local rifts = findEggRifts()
+    dropdown = createDropdown(105, rifts, function() end)
 
-        if egg then
-            if autoFly then
-                local pos
-                if egg:IsA("Model") and egg.PrimaryPart then
-                    pos = egg.PrimaryPart.Position
-                elseif egg:IsA("Part") then
-                    pos = egg.Position
-                else
-                    if egg:IsA("Model") then
-                        pos = egg:GetModelCFrame().Position
-                    else
-                        pos = nil
-                    end
-                end
+    while true do
+        task.wait(1)
+        if targetRiftName then
+            local rift
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if (obj:IsA("Model") or obj:IsA("Part")) and obj.Name == targetRiftName then
+                    rift = obj
+                    break
+                end
+            end
 
-                if pos then
-                    tweenTo(pos)
-                end
-            end
+            if rift then
+                local pos = rift:IsA("Model") and rift:GetModelCFrame().Position or rift.Position
+                tweenTo(pos)
 
-            if autoHatch then
-                task.spawn(function()
-                    while autoHatch and findEggByName(targetEggName) do
-                        pressE()
-                        wait(0.15)
-                    end
-                end)
-            end
-        elseif autoHop then
-            warn("Egg '"..targetEggName.."' not found. Hopping...")
-            wait(2)
-            local servers = getServerList()
-            if #servers > 0 then
-                TeleportService:TeleportToPlaceInstance(PLACE_ID, servers[1], LocalPlayer)
-                break
-            end
-        end
-    end
+                if autoHatch then
+                    task.spawn(function()
+                        while autoHatch and rift and rift.Parent do
+                            pressR()
+                            task.wait(0.15)
+                        end
+                    end)
+                end
+            elseif autoHop then
+                warn("Target Rift not found. Hopping...")
+                task.wait(2)
+                TeleportService:Teleport(PLACE_ID, LocalPlayer)
+                break
+            end
+        end
+    end
 end)
